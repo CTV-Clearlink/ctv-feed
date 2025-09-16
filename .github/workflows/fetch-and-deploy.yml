@@ -3,14 +3,14 @@ name: Fetch & Deploy SmartNews Feed
 on:
   schedule:
     - cron: "*/30 * * * *"      # every 30 minutes
-  workflow_dispatch:             # allow manual run
+  workflow_dispatch:             # manual run
   push:
-    branches: [ main ]
+    branches: [ main ]           # deploy on any commit
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
+  pages: write                   # REQUIRED for Pages
+  id-token: write                # REQUIRED for Pages OIDC
 
 jobs:
   build-and-deploy:
@@ -20,7 +20,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Fetch CableTV feed (via proxy, retry)
+      # 1) Fetch the source feed (CF-safe proxy) and verify it exists & has bytes
+      - name: Fetch CableTV feed (retry)
         env:
           FEED_URL: https://r.jina.ai/http://www.cabletv.com/blog/feed
         run: |
@@ -33,8 +34,26 @@ jobs:
           test -s smartnews-source.xml
           wc -c smartnews-source.xml
 
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+      # 2) Prove the XML is actually in the repo root before we deploy
+      - name: Verify XML present
+        run: |
+          echo "Repo root listing:"
+          ls -la
+          echo "XML size (bytes):"
+          wc -c smartnews-source.xml
+
+      # 3) Enable Pages (prevents 'Get Pages site failed' 404)
+      - name: Configure Pages (enable if needed)
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      # 4) Upload the ENTIRE repo root as the Pages artifact (must include XML)
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
         with:
           path: "."
-      - uses: actions/deploy-pages@v4
+
+      # 5) Deploy to GitHub Pages
+      - name: Deploy to Pages
+        uses: actions/deploy-pages@v4

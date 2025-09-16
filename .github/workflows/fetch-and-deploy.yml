@@ -1,0 +1,40 @@
+name: Fetch & Deploy SmartNews Feed
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"      # every 30 minutes
+  workflow_dispatch:             # allow manual run
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build-and-deploy:
+    environment:
+      name: github-pages
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch CableTV feed (via proxy, retry)
+        env:
+          FEED_URL: https://r.jina.ai/http://www.cabletv.com/blog/feed
+        run: |
+          set -euxo pipefail
+          for i in 1 2 3; do
+            curl -L --fail -A "Mozilla/5.0 (compatible; GitHubActions/1.0)" \
+              "$FEED_URL" -o smartnews-source.xml && break
+            echo "Retrying in 10s..."; sleep 10
+          done
+          test -s smartnews-source.xml
+          wc -c smartnews-source.xml
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: "."
+      - uses: actions/deploy-pages@v4
